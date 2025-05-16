@@ -1,0 +1,65 @@
+import os
+import re
+from mutagen.easyid3 import EasyID3
+from mutagen.flac import FLAC
+from mutagen import MutagenError
+
+def fix_artist_tags(folder_path):
+    """
+    修复音乐文件中错误的艺术家标签信息。
+    """
+    supported_formats = ['.mp3', '.flac']
+    
+    # 检查路径是否存在
+    if not os.path.exists(folder_path):
+        print(f"错误：指定的路径 {folder_path} 不存在！")
+        return
+
+    # 遍历文件夹中的文件
+    for filename in os.listdir(folder_path):
+        file_path = os.path.join(folder_path, filename)
+        # 检查是否为文件
+        if not os.path.isfile(file_path):
+            continue
+        
+        # 获取文件扩展名并检查是否为支持的音乐格式
+        ext = os.path.splitext(filename)[1].lower()
+        if ext not in supported_formats:
+            continue
+
+        try:
+            # 根据文件格式读取标签
+            if ext == '.mp3':
+                audio = EasyID3(file_path)
+            elif ext == '.flac':
+                audio = FLAC(file_path)
+            else:
+                continue
+
+            # 处理艺术家标签 (artist)
+            if 'artist' in audio:
+                original_artist = audio['artist'][0]  # 获取艺术家字符串
+                print(f"处理文件: {filename}, 原艺术家: {original_artist}")
+                
+                # 用正则匹配和分隔艺术家字符串
+                new_artists = re.split(r'\s*[/;]\s*', original_artist)
+                
+                # 如果分隔后有变化，则更新标签
+                if len(new_artists) > 1:
+                    audio['artist'] = new_artists  # 将多个艺术家写回标签
+                    audio.save()  # 保存文件
+                    print(f"已修复艺术家标签: {new_artists}")
+                else:
+                    print("艺术家信息无须更改。")
+        except MutagenError as e:
+            print(f"无法处理文件 {filename}，错误: {e}")
+        except Exception as e:
+            print(f"处理文件 {filename} 时出现未知错误: {e}")
+
+def main():
+    # 用户输入文件夹路径
+    folder_path = input("请输入音乐文件所在的文件夹路径：").strip()
+    fix_artist_tags(folder_path)
+
+if __name__ == "__main__":
+    main()
