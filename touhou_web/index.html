@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>三一 SANY Project · 灵梦与焊接火花</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="bg" aria-hidden="true"></div>
+
+<div class="frame" id="frame">
+
+  <!-- ============================ 游戏区 ============================ -->
+  <section class="playfield" id="playfield">
+    <video id="video" playsinline loop muted preload="auto"></video>
+
+    <!-- 没放视频时的占位（灯塔工厂） -->
+    <div class="video-empty" id="videoEmpty">
+      <div class="ve-title">灯塔工厂 · 自机待机中</div>
+      <div class="ve-hint">把视频拖进来，或点下面的「导入视频」</div>
+    </div>
+
+    <div class="field-shade"></div>
+    <div class="field-grain"></div>
+
+    <!-- 关卡标题（几秒后自动淡出，按 T 再看一次） -->
+    <div class="stage-title" id="stageTitle">
+      <div class="st-main">Stage&nbsp;2.5</div>
+      <div class="st-sub">毕业之前的毕设焊接遭遇战</div>
+    </div>
+
+    <!-- 自机 -->
+    <div class="reimu" id="reimu" title="按住可以拖动（上下左右都行）">
+      <img class="reimu-orb" src="assets/orb.png" alt="">
+      <div class="reimu-sprite"></div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <!-- 爆炸特效层 -->
+    <div class="fx" id="fx" aria-hidden="true"></div>
+
+    <!-- 阵亡覆盖层：半透明负片 + 5 条交错的圆环（Taisei 的 player_death shader） -->
+    <div class="df" id="df" aria-hidden="true">
+      <div class="df-flat"></div>
+      <div class="df-orbit" style="--rot0: 0deg"><i class="df-arc" style="--off: 0%"></i></div>
+      <div class="df-orbit" style="--rot0: 0deg"><i class="df-arc" style="--off: 9%"></i></div>
+      <div class="df-orbit" style="--rot0: 90deg"><i class="df-arc" style="--off: 9%"></i></div>
+      <div class="df-orbit" style="--rot0: 180deg"><i class="df-arc" style="--off: 9%"></i></div>
+      <div class="df-orbit" style="--rot0: 270deg"><i class="df-arc" style="--off: 9%"></i></div>
+      <div class="df-noise"></div>
+    </div>
+
+    <!-- 符卡演出 -->
+    <div class="spell" id="spell" aria-hidden="true">
+      <div class="spell-rays"></div>
+      <div class="spell-ring"></div>
+      <div class="spell-cutin"><img src="assets/reimu-cutin.png" alt=""></div>
+      <div class="spell-name-box">
+        <span class="spell-kicker">Spell Card</span>
+        <b class="spell-name" id="spellName">夢想封印</b>
+      </div>
+      <div class="spell-timer" id="spellTimer">50</div>
+    </div>
+
+    <!-- WARNING 横幅 -->
+    <div class="warn" id="warn">WARNING!</div>
+
+    <!-- BGM 提示条（几秒后自动淡出，按 B 再看一次） -->
+    <div class="bgm-line" id="bgmLine">
+      <img src="assets/orb.png" alt="">
+      <span>BGM：宛如级八焊工的烫得要死之⑨</span>
+    </div>
+
+    <!-- 视频控制条：闲置几秒自动隐藏，移上去再出现，H 键常驻 -->
+    <div class="tools" id="tools">
+      <button class="btn primary" id="btnImport">导入视频</button>
+      <button class="btn" id="btnFit" title="切换填充方式">铺满</button>
+      <button class="btn" id="btnReset">重置</button>
+      <span class="tsep"></span>
+      <label class="tslider"><span>宽</span><input type="range" id="rScaleX" min="20" max="400" value="100"><b id="vScaleX">100%</b></label>
+      <label class="tslider"><span>高</span><input type="range" id="rScaleY" min="20" max="400" value="100"><b id="vScaleY">100%</b></label>
+      <label class="tslider"><span>左右</span><input type="range" id="rOffX" min="-100" max="100" value="0"><b id="vOffX">0%</b></label>
+      <label class="tslider"><span>上下</span><input type="range" id="rOffY" min="-100" max="100" value="0"><b id="vOffY">0%</b></label>
+      <span class="tsep"></span>
+      <button class="btn icon" id="btnPlay" title="播放 / 暂停">❚❚</button>
+      <button class="btn icon" id="btnMute" title="声音开关">🔇</button>
+      <span class="tsep"></span>
+      <button class="btn" id="btnDie"   title="自机爆炸 (1 / X)">自爆 <i>1</i></button>
+      <button class="btn" id="btnStage" title="再放一次 STAGE 提示 (2 / T)">STAGE <i>2</i></button>
+      <button class="btn" id="btnSpell" title="宣言符卡 (3 / C)">符卡 <i>3</i></button>
+      <button class="btn" id="btnRain"  title="Boss 弹幕雨 (4 / B)">弹幕 <i>4</i></button>
+      <span class="tsep"></span>
+      <button class="btn ghost" id="btnPin" title="固定显示控制条 (H)">固定</button>
+      <input type="file" id="fileInput" accept="video/*" hidden>
+    </div>
+  </section>
+
+  <!-- ============================ HUD ============================ -->
+  <aside class="hud">
+    <div class="hud-main">
+      <div class="row">
+        <span class="label">Hi-Score:</span>
+        <span class="value" id="hiscore">0,001,521,830</span>
+      </div>
+      <div class="row">
+        <span class="label">Score:</span>
+        <span class="value" id="score">0,000,000,000</span>
+      </div>
+
+      <div class="row">
+        <span class="label">剩余人数</span>
+        <span class="icons" id="lives"></span>
+      </div>
+      <div class="subrow">
+        <span class="sub-label">奖残:</span>
+        <span class="sub-value" id="extendText">5,000,000</span>
+      </div>
+
+      <div class="row">
+        <span class="label">Spell Card</span>
+        <span class="icons" id="spells"></span>
+      </div>
+      <div class="subrow">
+        <span class="sub-label">碎片:</span>
+        <span class="sub-value"><span id="frag">0</span> / 500</span>
+      </div>
+
+      <div class="row top-gap">
+        <span class="label icon-label">
+          <img class="chip" src="assets/power.png" alt="">
+          <b class="c-power">灵力</b>
+        </span>
+        <span class="value"><span id="power">1.00</span> <em>/ 4.00</em></span>
+      </div>
+
+      <div class="row">
+        <span class="label icon-label">
+          <img class="chip" src="assets/credit.png" alt="">
+          <b class="c-point">学分</b>
+        </span>
+        <span class="value" id="point">010,000</span>
+      </div>
+
+      <div class="row">
+        <span class="label icon-label">
+          <span class="chip chip-css c-voltage">电</span>
+          <b class="c-voltage">电压</b>
+        </span>
+        <span class="value"><span id="voltage">0,000V</span> <em class="c-voltage">/ 0,050V</em></span>
+      </div>
+
+      <div class="row">
+        <span class="label c-graze">Graze:</span>
+        <span class="value" id="graze">000,000</span>
+      </div>
+    </div>
+
+    <div class="hud-foot">
+      <div class="difficulty">毕设</div>
+      <div class="difficulty-sub">我草我论文还没写！</div>
+      <img class="logo-mark" src="assets/sanyi.svg" alt="">
+      <div class="logo">三一</div>
+      <div class="logo-sub">SANY Project</div>
+    </div>
+  </aside>
+
+  <div class="fps"><span id="fps">56.45</span> fps</div>
+</div>
+
+<script src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+# 你自己的焊接视频别提交（可能几百 MB）
+assets/spark.mp4
+
+# 系统杂物
+.DS_Store
+Thumbs.db
+__pycache__/

@@ -1,0 +1,818 @@
+/* =========================================================
+   三一 SANY Project · 网页版游戏界面
+   整个游戏画面是一个 4:3 的框（和原作窗口一个比例）
+   框内：左边游戏区(384:448) + 右边 HUD，剩下的地方铺花纹背景
+   1em = 框高/67.5（由 js 实时换算）
+   ========================================================= */
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+
+/* 图片/视频不许被浏览器原生拖动（拖灵梦的时候老被 orb.png 抢走） */
+img, video { -webkit-user-drag: none; user-select: none; -webkit-user-select: none; }
+
+body {
+  background: radial-gradient(125% 100% at 50% 38%, #1c2532 0%, #121a24 46%, #070a0f 100%);
+  color: #eee;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  font-family: "Times New Roman", "Noto Serif CJK SC", "Songti SC", "SimSun", Georgia, serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 车间底板：细格 + 钢板拼缝/走线（异星工厂那味儿） */
+.bg {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  font-size: 16px;
+  background-image:
+    linear-gradient(rgba(130, 180, 225, .06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(130, 180, 225, .06) 1px, transparent 1px);
+  background-size: 2.2em 2.2em;
+}
+.bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("../assets/pattern.svg");
+  background-size: 18em 18em;
+  opacity: .9;
+}
+
+/* ---------------------------- 4:3 游戏框 ---------------------------- */
+.frame {
+  position: relative;
+  height: min(94vh, 70.5vw);      /* 4:3 */
+  aspect-ratio: 4 / 3;
+  font-size: 16px;               /* JS 覆盖 */
+  display: flex;
+  align-items: center;
+  gap: .5em;
+  padding: 2.1em .5em;
+  border-radius: .4em;
+  overflow: hidden;
+  z-index: 1;
+  background: radial-gradient(120% 100% at 50% 45%, rgba(30, 44, 62, .55), rgba(0, 0, 0, .48));
+  box-shadow:
+    0 2em 5em rgba(0, 0, 0, .8),
+    0 0 0 1px rgba(255, 165, 80, .16);
+}
+
+/* ---------------------------- 游戏区 ---------------------------- */
+.playfield {
+  position: relative;
+  flex: none;
+  height: 100%;
+  aspect-ratio: 384 / 448;
+  background: #0a0d12;
+  border: .35em solid #070a0e;
+  border-radius: .25em;
+  overflow: hidden;
+  cursor: grab;
+  z-index: 2;
+  box-shadow:
+    0 1.2em 3em rgba(0, 0, 0, .8),
+    0 0 0 .12em rgba(255, 165, 80, .18),
+    inset 0 0 3em rgba(0, 0, 0, .9);
+}
+.playfield.dragging { cursor: grabbing; }
+
+#video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;                       /* 铺满 */
+  transform: translate(var(--ox, 0%), var(--oy, 0%)) scale(var(--sx, 1), var(--sy, 1));
+  transform-origin: 50% 50%;
+  display: none;                           /* 有视频后由 js 显示 */
+}
+.playfield.has-video #video { display: block; }
+
+/* 没视频时的灯塔工厂占位 */
+.video-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: .8em;
+  text-align: center;
+  padding: 2em;
+  background:
+    radial-gradient(85% 55% at 50% 78%, rgba(255, 255, 255, .55), transparent 72%),
+    radial-gradient(70% 40% at 20% 30%, rgba(255, 255, 255, .35), transparent 75%),
+    linear-gradient(#93a6b6 0%, #b4c2ce 42%, #cdd6de 100%);
+  color: #2c3a45;
+  transition: opacity .35s;
+}
+.playfield.has-video .video-empty { opacity: 0; pointer-events: none; }
+.ve-title { font-size: 1.9em; letter-spacing: .18em; text-shadow: 0 1px 0 rgba(255,255,255,.6); }
+.ve-hint  { font-size: 1.15em; letter-spacing: .08em; opacity: .7; }
+
+/* 视频上的柔光/颗粒，让画面更像游戏内 */
+.field-shade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(115% 80% at 50% 45%, transparent 52%, rgba(0, 0, 0, .45) 100%),
+    linear-gradient(to bottom, rgba(0, 0, 0, .18), transparent 18%, transparent 82%, rgba(0, 0, 0, .3));
+  z-index: 2;
+}
+.field-grain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: .055;
+  z-index: 3;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* 关卡标题 */
+.stage-title {
+  position: absolute;
+  left: 0; right: 0;
+  top: 34%;
+  text-align: center;
+  pointer-events: none;
+  z-index: 4;
+  transition: opacity 1.2s ease;
+}
+.stage-title.gone { opacity: 0; }
+.st-main {
+  font-size: 4.4em;
+  letter-spacing: .04em;
+  color: #fff;
+  text-shadow: 0 .05em .18em rgba(0, 0, 0, .85), 0 0 .9em rgba(0, 0, 0, .55);
+}
+.st-sub {
+  margin-top: .35em;
+  font-size: 1.65em;
+  letter-spacing: .34em;
+  text-indent: .34em;
+  color: #f2f2f2;
+  text-shadow: 0 .06em .2em rgba(0, 0, 0, .9), 0 0 .8em rgba(0, 0, 0, .6);
+}
+
+/* BGM 提示条 */
+.bgm-line {
+  position: absolute;
+  left: 0; right: 0;
+  bottom: 3.2%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .5em;
+  font-size: 1.5em;
+  letter-spacing: .06em;
+  color: #fff;
+  pointer-events: none;
+  z-index: 4;
+  transition: opacity 1s ease;
+  text-shadow: 0 .06em .18em rgba(0, 0, 0, .95), 0 0 .7em rgba(0, 0, 0, .7);
+}
+.bgm-line.gone { opacity: 0; }
+.bgm-line img { width: 1.15em; height: 1.15em; opacity: .95; }
+
+/* ---------------------------- 自机 · 灵梦 ---------------------------- */
+.reimu {
+  position: absolute;
+  left: 50%;
+  bottom: 14%;
+  width: 5.5%;
+  transform: translateX(-50%);
+  z-index: 5;
+  cursor: move;
+  touch-action: none;
+  filter: drop-shadow(.12em .2em .18em rgba(0, 0, 0, .55));
+}
+.reimu:active { cursor: move; }
+.reimu-sprite {
+  width: 100%;
+  aspect-ratio: 32 / 48;
+  background: url("../assets/reimu-walk.png") 0 0 / 400% 100% no-repeat;
+  image-rendering: pixelated;
+  animation: reimuWalk .72s step-end infinite;
+}
+.reimu-orb {
+  position: absolute;
+  left: 50%;
+  bottom: -34%;
+  width: 52%;
+  height: auto;
+  transform: translateX(-50%);
+  animation: orbSpin 3.2s linear infinite, orbFloat 1.6s ease-in-out infinite;
+  opacity: .95;
+}
+@keyframes reimuWalk {
+  0%   { background-position: 0% 0; }
+  25%  { background-position: 33.3333% 0; }
+  50%  { background-position: 66.6667% 0; }
+  75%  { background-position: 100% 0; }
+  100% { background-position: 0% 0; }
+}
+@keyframes orbSpin {
+  from { transform: translateX(-50%) rotate(0deg); }
+  to   { transform: translateX(-50%) rotate(360deg); }
+}
+@keyframes orbFloat {
+  0%, 100% { margin-bottom: 0; }
+  50%      { margin-bottom: .18em; }
+}
+
+/* ---------------------------- 视频控制条 ---------------------------- */
+.tools {
+  position: absolute;
+  left: .6em; right: .6em; top: .6em;
+  z-index: 8;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .45em;
+  padding: .55em .7em;
+  border-radius: .5em;
+  background: rgba(10, 14, 20, .76);
+  border: 1px solid rgba(255, 170, 90, .22);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 .5em 1.5em rgba(0, 0, 0, .6);
+  font-family: "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 1em;
+  transition: opacity .25s, transform .25s;
+}
+.tools.hidden { opacity: 0; transform: translateY(-.6em); pointer-events: none; }
+
+.btn {
+  appearance: none;
+  border: 1px solid rgba(255, 180, 105, .3);
+  background: rgba(255, 255, 255, .07);
+  color: #ffeede;
+  font: inherit;
+  font-size: .95em;
+  padding: .35em .7em;
+  border-radius: .35em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s, border-color .15s;
+}
+.btn:hover { background: rgba(255, 255, 255, .16); border-color: rgba(255, 180, 105, .55); }
+.btn:active { transform: translateY(1px); }
+.btn.primary { background: rgba(206, 108, 30, .8); border-color: rgba(255, 190, 110, .6); color: #fff; }
+.btn.primary:hover { background: rgba(232, 130, 44, .95); }
+.btn.ghost { background: transparent; }
+.btn.ghost.on { background: rgba(206, 108, 30, .65); }
+.btn.icon { min-width: 2.4em; text-align: center; }
+
+.tsep { width: 1px; height: 1.5em; background: rgba(255, 190, 120, .28); margin: 0 .15em; }
+
+.tslider {
+  display: flex;
+  align-items: center;
+  gap: .35em;
+  font-size: .9em;
+  color: #f0e4d8;
+  white-space: nowrap;
+}
+.tslider input[type="range"] {
+  width: 5.2em;
+  accent-color: #e08a2c;
+  cursor: pointer;
+}
+.tslider b { min-width: 3.1em; text-align: right; font-weight: 400; opacity: .85; font-variant-numeric: tabular-nums; }
+
+.playfield.dropping::after {
+  content: "松手导入视频";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  font-size: 2em;
+  letter-spacing: .2em;
+  color: #fff;
+  background: rgba(120, 20, 40, .55);
+  border: .2em dashed rgba(255, 200, 210, .8);
+  z-index: 9;
+  font-family: "Noto Sans CJK SC", "PingFang SC", system-ui, sans-serif;
+}
+
+/* 提示气泡 */
+.toast {
+  position: absolute;
+  left: 50%;
+  bottom: 10%;
+  transform: translate(-50%, .6em);
+  padding: .5em 1em;
+  border-radius: .4em;
+  background: rgba(12, 8, 4, .88);
+  border: 1px solid rgba(255, 170, 90, .32);
+  box-shadow: 0 .4em 1.2em rgba(0, 0, 0, .6);
+  color: #ffeede;
+  font-family: "Noto Sans CJK SC", "PingFang SC", system-ui, sans-serif;
+  font-size: 1.05em;
+  line-height: 1.4;
+  max-width: 85%;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .25s, transform .25s;
+  z-index: 10;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* 控制条按钮上的按键角标 */
+.btn i {
+  font-style: normal;
+  font-size: .78em;
+  opacity: .65;
+  margin-left: .18em;
+  padding: 0 .3em;
+  border: 1px solid currentColor;
+  border-radius: .25em;
+}
+
+/* ---------------------------- 特效层 ---------------------------- */
+.fx {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 7;
+}
+.fx-item { position: absolute; transform: translate(-50%, -50%); }
+
+/* 弹幕雨 */
+.fx-bullet { animation: fxFall var(--dur) linear forwards; }
+@keyframes fxFall {
+  0%   { opacity: 0; transform: translate(-50%, -50%) translate(0, 0) rotate(0deg); }
+  8%   { opacity: 1; }
+  100% { opacity: .95;
+         transform: translate(-50%, -50%) translate(var(--dx), var(--dy)) rotate(var(--rot)); }
+}
+
+/* ================= 阵亡演出（照 Taisei 的 player_death 来的）=================
+   1) 从死亡点扩散的「圆环反色 + 噪声」覆盖层（原作只有 12 帧 = 200ms）
+   2) 60 颗 flare 往外飞，一边飞一边缩到没有
+   3) 深红冲击波 0 → 3.4 倍
+   4) 橙色大光环 5 → 0.01 倍收缩
+   5) 自机被拉成竖条消失
+   6) 12 帧后掉命，再从画面下方飞回来，起身后无敌闪烁
+   ========================================================================= */
+
+/* 1) 覆盖层：画面用 filter 整体反色（见 .playfield.inverting），
+      这一层只管「从死亡点扩出去的雾气 + 5 条交错圆弧」，原作 90 帧 = 1.5 秒 */
+.df {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none;
+  opacity: 0;
+}
+.df.on { opacity: 1; }
+
+/* 阵亡时整块游戏区反色。用 filter 直接反内容 —— 
+   backdrop-filter 在有多层混合的兄弟节点时会采不到背景，会糊成灰 */
+.playfield > *:not(.df):not(.tools) { transition: filter .22s linear; }
+.playfield.inverting > *:not(.df):not(.tools) {
+  filter: grayscale(.55) invert(1) contrast(1.14) brightness(1.05);
+}
+
+/* 雾气：从死亡点散开的一层薄雾，让负片不那么硬（原作是噪声乘出来的）*/
+.df-flat {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at var(--dx, 50%) var(--dy, 50%),
+    rgba(215, 228, 245, .30), rgba(190, 205, 230, .12) 55%, transparent 78%);
+  clip-path: circle(0% at var(--dx, 50%) var(--dy, 50%));
+}
+.df.on .df-flat { animation: dfFlat 1.5s cubic-bezier(.25, .55, .4, 1) forwards; }
+@keyframes dfFlat {
+  0%   { opacity: 1; clip-path: circle(2% at var(--dx, 50%) var(--dy, 50%)); }
+  78%  { opacity: 1; clip-path: circle(78% at var(--dx, 50%) var(--dy, 50%)); }
+  100% { opacity: 0; clip-path: circle(88% at var(--dx, 50%) var(--dy, 50%)); }
+}
+
+/* 圆环线：绕着死亡点转着往外扩 */
+.df-orbit {
+  position: absolute;
+  inset: 0;
+  transform-origin: var(--dx, 50%) var(--dy, 50%);
+}
+.df.on .df-orbit { animation: dfOrbit 1.5s linear forwards; }
+@keyframes dfOrbit {
+  from { transform: rotate(var(--rot0, 0deg)); }
+  to   { transform: rotate(calc(var(--rot0, 0deg) + 52deg)); }
+}
+
+.df-arc {
+  position: absolute;
+  left: var(--dx, 50%);
+  top: calc(var(--dy, 50%) - var(--off, 0%));
+  width: 140%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: .16em solid rgba(208, 226, 255, .8);
+  box-shadow:
+    0 0 .9em rgba(140, 185, 255, .55),
+    inset 0 0 .9em rgba(255, 165, 210, .5);
+  mix-blend-mode: screen;
+  transform: translate(-50%, -50%) scale(.03);
+}
+.df.on .df-arc { animation: dfGrow 1.5s cubic-bezier(.22, .6, .4, 1) forwards; }
+@keyframes dfGrow { to { transform: translate(-50%, -50%) scale(1); } }
+
+/* 彩噪：原作是 noise_tex * 反色亮度，就一层，压得很淡 */
+.df-noise {
+  position: absolute;
+  inset: 0;
+  opacity: .3;
+  mix-blend-mode: overlay;
+  filter: saturate(2.2) contrast(1.2);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='3'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.df.on .df-noise { animation: dfNoise .07s steps(2) infinite; }
+@keyframes dfNoise {
+  0%   { background-position: 0 0; }
+  100% { background-position: 47px 31px; }
+}
+
+/* 2) flare：往外飞 + 缩到没有（scale 2 → 0.01） */
+.fx-flare-die { animation: flareDie var(--dur) linear forwards; }
+@keyframes flareDie {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(2); }
+  to   { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(.01); }
+}
+
+/* 3) 深红冲击波：0 → 3.4 倍 */
+.fx-blast-die {
+  animation: blastDie var(--dur) cubic-bezier(.2, .7, .4, 1) forwards;
+  filter: sepia(1) saturate(2.6) hue-rotate(-28deg) brightness(.5);
+}
+@keyframes blastDie {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(0); }
+  to   { opacity: 0; transform: translate(-50%, -50%) scale(3.4); }
+}
+
+/* 4) 橙色大光环：从 5 倍缩到没有 */
+.fx-halo-die {
+  animation: haloDie var(--dur) linear forwards;
+  filter: sepia(1) saturate(5) hue-rotate(-18deg) brightness(1.15);
+}
+@keyframes haloDie {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(5); }
+  to   { opacity: 0; transform: translate(-50%, -50%) scale(.01); }
+}
+
+/* 6) 一圈小爆（blastspam，偏深蓝） */
+.fx-spam {
+  animation: blastDie var(--dur) ease-out forwards;
+  filter: sepia(1) saturate(3) hue-rotate(170deg) brightness(.85);
+}
+
+/* 掉出来的 P 点：往外飞一段，边飞边淡 */
+.fx-item-drop { animation: itemDrop var(--dur) cubic-bezier(.15, .7, .3, 1) forwards; }
+@keyframes itemDrop {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(.4); }
+  15%  { opacity: 1; transform: translate(calc(-50% + var(--dx) * .35), calc(-50% + var(--dy) * .35)) scale(1.1); }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1); }
+}
+
+/* 自机：本体立刻隐去（拉条交给下面的分身） */
+.reimu.gone { opacity: 0; }
+
+/* 拉条分身：原作 player_death_effect_draw_sprite，
+   sx 先胀到 1.5 再缩到 0，sy 涨到 5 倍，最后拉成一根竖线消失 */
+.death-sprite {
+  background: url("../assets/reimu-walk.png") 0 0 / 400% 100% no-repeat;
+  image-rendering: pixelated;
+  animation: deathStretch .64s linear forwards;
+}
+@keyframes deathStretch {
+  0%   { opacity: 1; transform: translate(-50%, -50%) scale(1, 1); }
+  30%  { opacity: 1; transform: translate(-50%, -50%) scale(1.5, 1.15); }
+  65%  { opacity: .95; transform: translate(-50%, -50%) scale(.75, 3); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(.05, 5); }
+}
+
+/* 自机：从画面下方飞回来（60 帧） */
+.reimu.rising { animation: reimuRise 1s cubic-bezier(.33, 0, .2, 1); }
+@keyframes reimuRise {
+  from { bottom: -16%; }
+  to   { bottom: 14%; }
+}
+
+/* 起身无敌闪烁（210 帧） */
+.reimu.invul { animation: invBlink .16s steps(1) 22; }
+@keyframes invBlink { 50% { opacity: .25; } }
+
+/* Z 键连射 */
+.shot { animation: shotFly var(--dur) linear forwards; }
+@keyframes shotFly {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  to   { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(.9); }
+}
+
+/* 打枪时掉的 P 点 / 学分：位置由 js 逐帧算（要能被自机吸走） */
+.drop-item {
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform;
+  filter: drop-shadow(0 .08em .12em rgba(0, 0, 0, .65));
+}
+/* 被吃掉时的小火花 */
+.fx-pickup { animation: pickupPop var(--dur) ease-out forwards; }
+@keyframes pickupPop {
+  0%   { opacity: .95; transform: translate(-50%, -50%) scale(.4); }
+  100% { opacity: 0;   transform: translate(-50%, -50%) scale(2.1); }
+}
+
+/* WARNING 横幅 */
+.warn {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  font-size: 5.2em;
+  font-weight: 700;
+  letter-spacing: .06em;
+  color: #ff4040;
+  background: linear-gradient(90deg, transparent, rgba(110, 0, 18, .5) 18%, rgba(110, 0, 18, .5) 82%, transparent);
+  text-shadow: 0 0 .06em #000, 0 0 .5em rgba(255, 40, 70, .9), 0 .04em .1em #000;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 9;
+}
+.warn.on { animation: warnFlash 1.25s step-end; }
+@keyframes warnFlash {
+  0%, 22%, 44%, 66% { opacity: 1; }
+  11%, 33%, 55%     { opacity: .08; }
+  100% { opacity: 0; }
+}
+
+/* 符卡演出 */
+.spell {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .25s;
+  z-index: 6;
+}
+.spell.on { opacity: 1; }
+
+.spell-rays {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(58% 44% at 50% 52%, rgba(255, 225, 238, .32), transparent 72%),
+    radial-gradient(125% 105% at 50% 50%, rgba(95, 0, 26, .1) 35%, rgba(55, 0, 14, .72) 100%);
+}
+.spell.on .spell-rays { animation: spellRays .8s ease-out; }
+@keyframes spellRays { from { opacity: 0; filter: brightness(2.6); } to { opacity: 1; } }
+
+.spell-ring {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 66%;
+  aspect-ratio: 1;
+  margin: -33% 0 0 -33%;
+  border: .12em dashed rgba(255, 190, 215, .45);
+  border-radius: 50%;
+  box-shadow: inset 0 0 4em rgba(255, 110, 165, .35);
+  animation: spinSlow 9s linear infinite;
+}
+.spell-ring::after {
+  content: "";
+  position: absolute;
+  inset: 15%;
+  border: .08em solid rgba(255, 220, 235, .38);
+  border-radius: 50%;
+  animation: spinSlow 6s linear infinite reverse;
+}
+@keyframes spinSlow { to { transform: rotate(360deg); } }
+
+.spell-cutin {
+  position: absolute;
+  right: -2%;
+  bottom: 3%;
+  height: 80%;
+  opacity: 0;
+  transform: translateX(115%) skewX(-9deg);
+  filter: drop-shadow(0 0 1.4em rgba(255, 60, 110, .55));
+}
+.spell-cutin img { display: block; height: 100%; width: auto; }
+.spell.on .spell-cutin { animation: cutIn 2.6s cubic-bezier(.16, .9, .25, 1) forwards; }
+@keyframes cutIn {
+  0%   { opacity: 0; transform: translateX(115%) skewX(-9deg); }
+  14%  { opacity: 1; transform: translateX(0) skewX(-9deg); }
+  72%  { opacity: 1; transform: translateX(0) skewX(-9deg); }
+  100% { opacity: 0; transform: translateX(115%) skewX(-9deg); }
+}
+
+.spell-name-box {
+  position: absolute;
+  left: 0;
+  top: 24%;
+  display: flex;
+  flex-direction: column;
+  gap: .25em;
+  padding: .7em 2.4em .7em 1.5em;
+  border-left: .28em solid #ff8a2b;
+  background: linear-gradient(90deg, rgba(12, 7, 3, .93), rgba(12, 7, 3, .78) 68%, transparent);
+  opacity: 0;
+  transform: translateX(-110%);
+}
+.spell.on .spell-name-box { animation: bannerIn 2.6s cubic-bezier(.16, .9, .25, 1) forwards; }
+@keyframes bannerIn {
+  0%   { opacity: 0; transform: translateX(-110%); }
+  12%  { opacity: 1; transform: translateX(0); }
+  74%  { opacity: 1; transform: translateX(0); }
+  100% { opacity: 0; transform: translateX(-110%); }
+}
+.spell-kicker {
+  font-family: "Noto Sans CJK SC", "PingFang SC", system-ui, sans-serif;
+  font-size: 1.05em;
+  letter-spacing: .3em;
+  color: #ff7fa2;
+}
+.spell-name {
+  font-size: 3.1em;
+  line-height: 1.12;
+  color: #fff;
+  text-shadow: 0 0 .6em rgba(255, 80, 130, .65), 0 .06em .2em #000;
+}
+
+.spell-timer {
+  position: absolute;
+  right: 4%;
+  top: 4%;
+  font-size: 4.6em;
+  font-weight: 700;
+  color: #fff;
+  -webkit-text-stroke: .03em rgba(255, 60, 110, .9);
+  text-shadow: 0 0 .35em rgba(0, 0, 0, .9);
+  opacity: 0;
+}
+.spell.on .spell-timer { animation: timerIn 2.6s linear forwards; }
+@keyframes timerIn { 0% { opacity: 0; } 12% { opacity: 1; } 74% { opacity: 1; } 100% { opacity: 0; } }
+
+
+/* ---------------------------- HUD ---------------------------- */
+.hud {
+  position: relative;
+  flex: 1 1 auto;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 4.2em 1em 1.1em 0;
+  z-index: 2;
+  text-shadow: 0 .07em .16em rgba(0, 0, 0, .85), 0 .12em .35em rgba(0, 0, 0, .45);
+}
+
+.hud-main { display: flex; flex-direction: column; gap: 1.45em; }
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1em;
+  font-size: 2em;
+  line-height: 1;
+}
+.row.top-gap { margin-top: 1.5em; }
+
+.label { color: #f4f4f4; white-space: nowrap; }
+.value {
+  color: #c9c9c9;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .02em;
+}
+.value em { font-style: normal; color: #9a9a9a; }
+.c-power   { color: #ff4f5c; }
+.c-point   { color: #6cb6ff; }
+.c-voltage { color: #b98cff; }
+.c-graze   { color: #6ef07a; }
+
+.subrow {
+  display: flex;
+  justify-content: flex-end;
+  gap: .8em;
+  font-size: 1.5em;
+  line-height: 1;
+  color: #cfcfcf;
+  margin-top: -.85em;
+}
+.sub-label { color: #d8d8d8; }
+.sub-value { font-variant-numeric: tabular-nums; }
+.subrow .sub-label + .sub-value { min-width: 8.4em; text-align: right; }
+
+/* 小图标：P / 点 / 电 */
+.icon-label { display: flex; align-items: center; gap: .38em; }
+.chip {
+  width: 1.28em;
+  height: 1.28em;
+  object-fit: contain;
+  filter: drop-shadow(0 .06em .1em rgba(0, 0, 0, .8));
+}
+.chip-css {
+  display: grid;
+  place-content: center;
+  width: 1.28em;
+  height: 1.28em;
+  border-radius: .22em;
+  font-size: .82em;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: none;
+  background: linear-gradient(#a97bf0, #7b46c9);
+  box-shadow: inset 0 0 0 .08em rgba(255, 255, 255, .35), 0 .08em .2em rgba(0, 0, 0, .7);
+}
+
+/* 心 / 星 */
+.icons { display: flex; align-items: center; gap: .16em; }
+.icons img { width: 1.12em; height: 1.12em; object-fit: contain; }
+.icons img.empty { opacity: .5; }
+
+/* 底部难度 + 标题 */
+.hud-foot {
+  text-align: center;
+  padding-right: 1.5em;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.difficulty {
+  font-size: 4.2em;
+  line-height: 1;
+  font-style: italic;
+  color: #f6f6f6;
+  letter-spacing: .02em;
+  text-shadow: 0 .05em .12em rgba(0, 0, 0, .9), 0 0 1.2em rgba(255, 220, 230, .28);
+  transform: rotate(-4deg);
+}
+.difficulty-sub {
+  font-size: 1.05em;
+  color: #dcdcdc;
+  margin-top: .5em;
+  text-shadow: 0 .08em .2em rgba(0, 0, 0, .95), 0 0 .5em rgba(0, 0, 0, .8);
+}
+.logo-mark {
+  width: 5em;
+  height: auto;
+  margin: .35em 0 .3em;
+  /* 官方 logo 的深红在深色底上太闷，提一点亮度 + 加个红光 */
+  filter: brightness(1.25) saturate(1.05)
+          drop-shadow(0 0 .35em rgba(0, 0, 0, .9))
+          drop-shadow(0 0 .55em rgba(214, 0, 22, .55));
+}
+.logo {
+  font-size: 6.4em;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: .06em;
+  color: #fbfbfb;
+  text-shadow:
+    0 0 .06em rgba(0, 0, 0, .9),
+    0 .04em .1em rgba(0, 0, 0, .95),
+    0 0 .5em rgba(255, 230, 240, .35),
+    0 0 1.2em rgba(255, 180, 200, .25);
+}
+.logo-sub {
+  font-size: 2.7em;
+  letter-spacing: .04em;
+  color: #efefef;
+  margin-top: .12em;
+  text-shadow: 0 .06em .16em rgba(0, 0, 0, .95), 0 0 .5em rgba(0, 0, 0, .7);
+}
+
+/* ---------------------------- fps ---------------------------- */
+.fps {
+  position: absolute;
+  right: 1.2em;
+  bottom: .5em;
+  font-size: 1.7em;
+  color: #e6e6e6;
+  letter-spacing: .02em;
+  text-shadow: 0 .07em .16em rgba(0, 0, 0, .9);
+  font-variant-numeric: tabular-nums;
+  z-index: 3;
+}
+
+/* 窄屏（竖屏手机）时改成上下排 */
+@media (max-aspect-ratio: 1/1) {
+  .frame {
+    height: auto;
+    width: 96vw;
+    aspect-ratio: auto;
+    flex-direction: column;
+    padding: .9em;
+    gap: .9em;
+  }
+  .playfield { height: auto; width: min(100%, 44vh); }
+  .hud { width: 100%; height: auto; padding: .6em 0; }
+  .hud-foot { display: none; }
+}
